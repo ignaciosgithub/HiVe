@@ -14,7 +14,7 @@ gcc
 python
 
 author of this experiment: ignacio savi
-
+aditional author after first commit: tetzgabriel
 
 example program:
 

@@ -8,5 +8,9 @@ functional
 bugs:
 many
 
+Requirements:
+Nasm
+gcc
+python
 
 author of this experiment: ignacio savi

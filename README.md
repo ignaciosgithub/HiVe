@@ -1,4 +1,4 @@
-side project of creating a windows based assembly compiler for a new programming language that i invented.    
+Side project of creating a windows based assembly compiler for a new programming language that i invented.    
 
 features:
 stack and heap 
@@ -13,7 +13,7 @@ Nasm
 gcc
 python
 
-author of this experiment: ignacio savi
+author of this experiment: Ignacio Savi
 aditional author after first commit: tetzgabriel
 
 example program:

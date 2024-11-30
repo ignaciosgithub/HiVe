@@ -11,7 +11,6 @@ This project is a Windows-based assembly compiler for a programming language I i
 - Functional Programming: Encourages clean, modular, and reusable code.
 
 ## Current Limitations
-
 - Bugs: Many 
 - This is an experimental phase, so don't expect it to be production-ready yet!
 

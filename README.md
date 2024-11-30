@@ -36,9 +36,15 @@ reset_i()
 
 
 while j < 1000
+
     i = i + 1
+
     j = j + 1
+    
     print i # i = 10 or 11 depending on thread speed on other thread
+    
     reset_i()
+
 end
+
 delete arr # unallocate arr

@@ -1,50 +1,57 @@
-side project of creating a windows based assembly compiler for a new programming language that i invented.    
+# Assembly Compiler for a New Programming Language
 
-features:
-stack and heap 
-multithreading
-functional
+## Overview
 
-bugs:
-many
+This project is a Windows-based assembly compiler for a programming language I invented. It's an experimental side project aiming to combine modern features like functional programming, multithreading, and memory management using a stack and heap model.
 
-Requirements:
-Nasm
-gcc
-python
+## Key Features
 
-author of this experiment: ignacio savi
+- Stack and Heap Memory: Supports dynamic memory allocation for efficient program execution.
+- Multithreading: Allows the creation of threaded functions to perform concurrent operations.
+- Functional Programming: Encourages clean, modular, and reusable code.
 
+## Current Limitations
 
-example program:
+- Bugs: Many 
+- This is an experimental phase, so don't expect it to be production-ready yet!
 
+## Requirements
+To get started, ensure you have the following tools installed:
 
-i = 0
+- NASM: The Netwide Assembler for assembling your code.
+- GCC: For compiling and linking.
+- Python: Powers parts of the compiler and tooling.
 
-j = 1
+## Example Program
 
-arr = new[10] # heap alloc to 10 integers from 0 -9
+Below is a sample program written in the language:
 
-threaded function reset_i() #threaded function, could also be just function. but then it would not be threaded
-    
-   i = 9
-   
-end
+```
+i = 0  
+j = 1  
 
+arr = new[10] # Heap allocation for an array of 10 integers (0-9).  
 
-reset_i()
+threaded function reset_i() # Threaded function.  
+    i = 9  
+end  
 
+reset_i()  
 
-while j < 1000
+while j < 1000  
+    i = i + 1  
+    j = j + 1  
 
-    i = i + 1
+    print i # Value of 'i' depends on thread speed (10 or 11).  
 
-    j = j + 1
-    
-    print i # i = 10 or 11 depending on thread speed on other thread
-    
-    reset_i()
+    reset_i()  
+end  
 
-end
+delete arr # Unallocate memory for 'arr'.  
+```
 
-delete arr # unallocate arr
+## About the Author
+
+This experimental project is brought to you by Ignacio Savi, who is combining creativity with systems programming to explore the limits of language design.
+
+💡 Disclaimer: This project is still in development.

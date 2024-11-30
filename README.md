@@ -7,3 +7,6 @@ functional
 
 bugs:
 many
+
+
+author of this experiment: ignacio savi

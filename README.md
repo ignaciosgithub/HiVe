@@ -20,8 +20,11 @@ example program:
 
 
 i = 0
+
 j = 1
+
 arr = new[10] # heap alloc to 10 integers from 0 -9
+
 threaded function reset_i() #threaded function, could also be just function. but then it would not be threaded
     
    i = 9

@@ -1,5 +1,7 @@
 # Assembly Compiler for a New Programming Language
 
+Side project of creating a windows based assembly compiler for a new programming language that I invented.    
+
 ## Overview
 
 This project is a Windows-based assembly compiler for a programming language I invented. It's an experimental side project aiming to combine modern features like functional programming, multithreading, and memory management using a stack and heap model.
@@ -52,5 +54,13 @@ delete arr # Unallocate memory for 'arr'.
 ## About the Author
 
 This experimental project is brought to you by Ignacio Savi, who is combining creativity with systems programming to explore the limits of language design.
+
+## Author
+
+Ignacio Savi
+
+
+## Aditional authors 
+tetzgabriel
 
 💡 Disclaimer: This project is still in development.

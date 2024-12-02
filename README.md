@@ -1,3 +1,5 @@
+update: heap arrays are now accessable
+
 Side project of creating a windows based assembly compiler for a new programming language that i invented.    
 
 features:

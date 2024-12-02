@@ -234,20 +234,22 @@ class Parser:
             self.advance()
             factor = self.factor()
             return UnaryOpNode(token, factor)
-        elif token.type == TT_INT:
+        if token.type == TT_INT:
             self.advance()
             return NumberNode(token)
-        elif self.current_token.type == TT_LBRACKET:
-            return self.array_access(token)
         elif token.type == TT_IDENTIFIER:
             self.advance()
-            if self.current_token.type == TT_LPAREN:
-                # Function call
-                return self.function_call(token)
-
+            if self.current_token.type == TT_LBRACKET:
+                # Array access
+                self.advance()
+                index_expr = self.expression()
+                if self.current_token.type != TT_RBRACKET:
+                    raise Exception("Expected ']'")
+                self.advance()
+                return ArrayAccessNode(token, [index_expr])
             else:
-                
                 return VarAccessNode(token)
+
         elif token.type == TT_LPAREN:
             self.advance()
             expr = self.expression()

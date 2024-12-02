@@ -48,3 +48,52 @@ while j < 1000
 end
 
 delete arr # unallocate arr
+another example
+
+
+
+
+li = new[9]
+i = 10
+
+while i < 18
+
+ li[i-11] = i
+ print i
+ print li[i-11]
+ i = i+1
+end
+delete li
+i = 0
+j = 1
+threaded function reset_i()
+    # Wait for a moment to ensure the main thread has started incrementing
+   i = 9
+   
+end
+
+# Start the threaded function
+
+function reset()
+ i = 9
+end
+i = 0
+# Main thread increments i from 0 to 10,000
+while j < 10
+    i = i + 1
+    j = j + 1
+    reset_i()
+    print i
+
+end
+
+j = 0
+
+i = 0
+while j < 10
+    i = i + 1
+    j = j + 1
+    reset()
+    print i
+
+end

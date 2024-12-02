@@ -235,35 +235,51 @@ class CodeGenerator:
 
     def visit_ArrayAssignNode(self, node, value_node=None):
         var_name = node.var_name_token.value
+        if var_name == '[':
+            return
         if var_name not in self.variables:
             raise Exception(f"Undefined array '{var_name}' assigned to")
         var_info = self.variables[var_name]
         if var_info['type'] == 'dynamic_array':
             if len(node.indexes) != 1:
                 raise Exception("Dynamic arrays are one-dimensional")
+
             # Compute index
             self.visit(node.indexes[0])
-            self.asm_code.append('    mov rbx, rax')  # Index
+            self.asm_code.append('    push rax')  # Save index on stack
 
             if value_node:
                 # Assignment to array element
-                # Evaluate value to assign
                 self.visit(value_node)
-                self.asm_code.append('    push rax')          # Save value to assign
-                self.asm_code.append(f'    mov rax, [{var_name}]')  # Base address of array
-                self.asm_code.append('    pop rcx')           # Value to assign
-                self.asm_code.append('    mov [rax + rbx*8], rcx')  # Store value at address
+                self.asm_code.append('    mov rcx, rax')      # Value to assign
+                self.asm_code.append('    pop rdx')           # Restore index
+                self.asm_code.append(f'    mov r8, [{var_name}]')  # Base address of array
+                self.asm_code.append('    mov [r8 + rdx*8], rcx')  # Store value at address
             else:
-                # Access array element (e.g., in an expression)
-                self.asm_code.append(f'    mov rax, [{var_name}]')  # Base address of array
-                self.asm_code.append('    mov rax, [rax + rbx*8]')  # Load value at index into rax
+            # Reading from array (though assign node typically doesn't read)
+                self.asm_code.append('    pop rdx')           # Restore index
+                self.asm_code.append(f'    mov r8, [{var_name}]')  # Base address of array
+                self.asm_code.append('    mov rax, [r8 + rdx*8]')  # Load value at index into rax
         else:
-            # Handle static arrays or error
             raise Exception(f"Unsupported array type '{var_info['type']}'")
 
     def visit_ArrayAccessNode(self, node):
-        # Access array element (e.g., in an expression)
-        self.visit_ArrayAssignNode(node)
+        var_name = node.var_name_token.value
+        if var_name == '[':
+            return
+
+        if var_name not in self.variables:
+            raise Exception(f"Undefined array '{var_name}' accessed")
+        var_info = self.variables[var_name]
+        if var_info['type'] == 'dynamic_array':
+            # Compute index
+            self.visit(node.indexes[0])
+            self.asm_code.append('    push rax')  # Save index on stack
+            self.asm_code.append(f'    mov rax, [{var_name}]')  # Base address of array
+            self.asm_code.append('    pop rdx')   # Restore index
+            self.asm_code.append('    mov rax, [rax + rdx*8]')  # Load value at index into rax
+        else:
+            raise Exception(f"Cannot access variable of type '{var_info['type']}'")
 
     def calculate_array_offset(self, node, var_info):
         # Calculate the linear offset for multi-dimensional arrays

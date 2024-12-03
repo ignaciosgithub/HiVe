@@ -11,7 +11,7 @@ class CodeGenerator:
         self.string_constants = []
         self.setup()
         self.current_function_end_label = None
-
+        self.variable_scopes = [{}] 
     
     def setup(self):
         """Set up the initial assembly code."""
@@ -25,7 +25,7 @@ class CodeGenerator:
         self.asm_code.append('extern CloseHandle')
 
         self.asm_code.append('section .data')
-        self.asm_code.append('format db "%d", 10, 0')  # For printing integers
+        self.asm_code.append('format db "%lld", 10, 0')  # For printing integers
 
         # Windows heap flags
         self.asm_code.append('HEAP_ZERO_MEMORY equ 0x00000008')
@@ -51,9 +51,7 @@ class CodeGenerator:
                 self.visit(node)
     # Proceed with the rest of your code generation
     # Deallocate shadow space and restore stack
-        self.asm_code.append('    add rsp, 40')
-        self.asm_code.append('    mov rcx, 0')
-        self.asm_code.append('    call ExitProcess')
+
         varlist = []
         # Deallocate shadow space and restore stack
         self.asm_code.append('    add rsp, 40')
@@ -65,7 +63,10 @@ class CodeGenerator:
         # Handle variable and array declarations in the .bss section
         bss_section = ['section .bss']
         bss_section.append('heap_handle: resq 1')
-        for var_name, var_info in self.variables.items():
+        print(self.variable_scopes)
+        hj = self.variable_scopes[0]
+  
+        for var_name,var_info in self.variables.items():
             print(var_name)
             if var_info['type'] == 'scalar':
                 bss_section.append(f'{var_name}: resq 1')  # Reserve 8 bytes
@@ -73,8 +74,7 @@ class CodeGenerator:
                 total_size = var_info['size']
                 bss_section.append(f'{var_name}: resq {total_size}')  # Reserve space for the array
             elif var_info['type'] == 'dynamic_array':
-                bss_section.append(f'{var_name}: resq 1')  # Store pointer to dynamic array
-
+                bss_section.append(f'{var_name}: resq 1')
         # Insert the .bss section after the .data section
         data_section_end = self.asm_code.index('section .text')
         self.asm_code = self.asm_code[:data_section_end] + bss_section + self.asm_code[data_section_end:]
@@ -94,18 +94,45 @@ class CodeGenerator:
         self.asm_code.append(f'    mov rax, {node.token.value}')
 
     def visit_VarAssignNode(self, node):
-        if isinstance(node.left_node, VarAccessNode):
-            var_name = node.left_node.var_name_token.value
-            if var_name not in self.variables:
-                self.variables[var_name] = {'type': 'scalar'}
-                print(f"Added variable '{var_name}' to self.variables")
-            self.visit(node.value_node)
-            self.asm_code.append(f'    mov qword [{var_name}], rax')  # Use qword for 64-bit
-        elif isinstance(node.left_node, ArrayAccessNode):
-            # Assignment to array element
-            self.visit_ArrayAssignNode(node.left_node, node.value_node)
-        else:
-            raise Exception(f"Invalid left-hand side in assignment")
+       if isinstance(node.left_node, VarAccessNode):
+           var_name = node.left_node.var_name_token.value
+           # Check if variable exists in any scope
+           for scope in reversed(self.variable_scopes):
+               if var_name in scope:
+                   # Variable already exists; use it
+                   break
+           
+               # Variable not found; declare it in current scope
+               print("declaring scalar")
+               self.variable_scopes[-1][var_name] = {'type': 'scalar'}
+               self.variables[var_name] = {'type': 'scalar'}
+           self.visit(node.value_node)
+           self.asm_code.append(f'    mov qword [{var_name}], rax')  # Use qword for 64-bit
+       elif isinstance(node.left_node, ArrayAccessNode):
+           # Assignment to array element
+           self.visit_ArrayAssignNode(node.left_node, node.value_node)
+       else:
+           raise Exception(f"Invalid left-hand side in assignment")
+   
+    def visit_VarAccessNode(self, node):
+       var_name = node.var_name_token.value
+       # Look for variable in scopes starting from innermost
+       for scope in reversed(self.variable_scopes):
+           print(self.variables)
+           if var_name in scope:
+               var_info = scope[var_name]
+               break
+           elif var_name not in self.variables:
+               self.variables[var_name] = {'type': 'scalar'}
+           else:
+               self.variables[var_name] = {'type': 'scalar'}# raise Exception(f"Undefined variable '{var_name}' accessed")
+       var_info = self.variables[var_name]
+       if var_info['type'] == 'scalar':
+           self.asm_code.append(f'    mov rax, qword [{var_name}]')
+       elif var_info['type'] == 'dynamic_array':
+           self.asm_code.append(f'    mov rax, [{var_name}]')  # Load the pointer
+       else:
+           raise Exception(f"Cannot access variable of type '{var_info['type']}'")
     def visit_WhileNode(self, node):
         label_start = f'WHILE_START_{self.labels}'
         label_end = f'WHILE_END_{self.labels}'
@@ -120,23 +147,7 @@ class CodeGenerator:
         self.asm_code.append(f'    jmp {label_start}')
         self.asm_code.append(f'{label_end}:')
 
-    def visit_VarAccessNode(self, node):
-        try:
-            var_name = node.var_name_token.value
-        except:
-            print("func found")
-        if var_name not in self.variables:
-            if var_name in self.functions:
-                self.visit_FunctionDefNode(node)
-                return
-            raise Exception(f"Undefined variable '{var_name}' accessed")
-        var_info = self.variables[var_name]
-        if var_info['type'] == 'scalar':
-            self.asm_code.append(f'    mov rax, qword [{var_name}]')
-        elif var_info['type'] == 'dynamic_array':
-            self.asm_code.append(f'    mov rax, [{var_name}]')  # Load the pointer
-        else:
-            raise Exception(f"Cannot access variable of type '{var_info['type']}'")
+
 
     def visit_BinOpNode(self, node):
         if node.op_token.type in (token_types.TT_PLUS, token_types.TT_MINUS, token_types.TT_MUL, token_types.TT_DIV):
@@ -236,9 +247,15 @@ class CodeGenerator:
     def visit_ArrayAssignNode(self, node, value_node=None):
         var_name = node.var_name_token.value
         if var_name == '[':
-            return
-        if var_name not in self.variables:
-            raise Exception(f"Undefined array '{var_name}' assigned to")
+            return        
+        for scope in reversed(self.variable_scopes):
+            if var_name in scope:
+                print(var_name)
+                
+                break
+            else:
+                self.variables[var_name] = {'type': 'dynamic_array'}#raise Exception(f"Undefined array '{var_name}' assigned to")
+        self.variables[var_name] = {'type': 'dynamic_array'}
         var_info = self.variables[var_name]
         if var_info['type'] == 'dynamic_array':
             if len(node.indexes) != 1:
@@ -268,8 +285,13 @@ class CodeGenerator:
         if var_name == '[':
             return
 
-        if var_name not in self.variables:
-            raise Exception(f"Undefined array '{var_name}' accessed")
+        for scope in reversed(self.variable_scopes):
+            if var_name in scope:
+                print(var_name)
+                break
+            
+        
+        self.variables[var_name] = {'type': 'dynamic_array'}
         var_info = self.variables[var_name]
         if var_info['type'] == 'dynamic_array':
             # Compute index
@@ -296,17 +318,25 @@ class CodeGenerator:
             self.asm_code.append('    add rax, rbx')  # Update total offset
     def visit_DynamicArrayAllocNode(self, node):
         var_name = node.var_name_token.value
-        if var_name not in self.variables:
+        # Check if variable exists in any scope
+        for scope in reversed(self.variable_scopes):
+          if var_name in scope:
+              # Variable already exists; update type
+              scope[var_name]['type'] = 'dynamic_array'
+              break
+          else:
+          # Variable not found; declare it in current scope
+            self.variable_scopes[-1][var_name] = {'type': 'dynamic_array'}
             self.variables[var_name] = {'type': 'dynamic_array'}
-        # Evaluate size expression
+
+      # Evaluate size expression
         self.visit(node.size_expr)
         self.asm_code.append('    mov rcx, [heap_handle]')  # Heap handle
         self.asm_code.append('    mov rdx, HEAP_ZERO_MEMORY')  # Heap allocation flags
-        self.asm_code.append('    imul rax, 8') 
+        self.asm_code.append('    imul rax, 8')
         self.asm_code.append('    mov r8, rax')  # Size of allocation
         self.asm_code.append('    call HeapAlloc')
         self.asm_code.append(f'    mov [{var_name}], rax')  # Store pointer in variable
-        self.variables[var_name] = {'type': 'dynamic_array'}
     def visit_DeleteNode(self, node):
         var_name = node.var_name_token.value
         if var_name not in self.variables or self.variables[var_name]['type'] != 'dynamic_array':
@@ -354,6 +384,8 @@ class CodeGenerator:
             num_params = len(node.param_tokens)
             param_registers = ['rcx', 'rdx', 'r8', 'r9']
             for i, param_token in enumerate(node.param_tokens):
+                self.variables[param_token.value] = {'type': 'scalar'}
+                print(param_token.value)
                 if i < 4:
                     reg = param_registers[i]
                     self.asm_code.append(f'    mov qword [{param_token.value}], {reg}')
@@ -385,12 +417,68 @@ class CodeGenerator:
         # Insert the function code at the beginning (or appropriate place)
         self.asm_code = func_code + self.asm_code
         self.current_function_end_label = label_func_end
+    def visit_FunctionDefNode(self, node):
+       func_name = node.func_name_token.value
+       self.functions[func_name] = {'threaded': node.threaded}
+       label_func_start = f"FUNC_{func_name}"
+       label_func_end = f"FUNC_{func_name}_END"
+   
+       # Store the current asm_code to restore after function definition
+       main_asm_code = self.asm_code
+       self.asm_code = []
+   
+       # Function label
+       self.asm_code.append(f'{label_func_start}:')
+       self.current_function_end_label = label_func_end
+   
+       # Push a new variable scope for the function
+       self.variable_scopes.append({})
+   
+       # Prologue
+       self.asm_code.append('    push rbp')
+       self.asm_code.append('    mov rbp, rsp')
+       # Handle parameters
+       num_params = len(node.param_tokens)
+       param_registers = ['rcx', 'rdx', 'r8', 'r9']
+       for i, param_token in enumerate(node.param_tokens):
+           if i < 4:
+               reg = param_registers[i]
+               self.asm_code.append(f'    mov qword [{param_token.value}], {reg}')
+           else:
+               offset = (i - 4) * 8 + 16
+               self.asm_code.append(f'    mov rax, qword [rbp + {offset}]')
+               self.asm_code.append(f'    mov qword [{param_token.value}], rax')
+           # Declare parameter in the function's scope
+           self.variable_scopes[-1][param_token.value] = {'type': 'scalar'}
+           self.variables[param_token.value] = {'type': 'scalar'}
+       # Function body
+       for stmt in node.body_nodes:
+           self.visit(stmt)
+   
+       # Epilogue
+       self.asm_code.append(f'{label_func_end}:')
+       self.asm_code.append('    mov rsp, rbp')
+       self.asm_code.append('    pop rbp')
+       self.asm_code.append('    ret')
+   
+       # Pop the function's scope
+       self.variable_scopes.pop()
+   
+       # Save the function code
+       func_code = self.asm_code
+   
+       # Restore the main asm_code
+       self.asm_code = main_asm_code
+       # Insert the function code at the beginning (or appropriate place)
+       self.asm_code = func_code + self.asm_code
+       self.current_function_end_label = label_func_end
+        
     def visit_FunctionCallNode(self, node):
         func_name = node.func_name_token.value
         # Check if the function is threaded
         is_threaded = self.functions.get(func_name, {}).get('threaded', False)
         # You might need to keep track of function definitions and whether they are threaded
-
+        print(is_threaded)
         # Evaluate arguments
 
 
@@ -430,9 +518,7 @@ class CodeGenerator:
 
         # Close the thread handle
             self.asm_code.append('    mov rcx, rax')               # Thread handle returned in rax
-            self.asm_code.append('    call CloseHandle')  # Close the thread handle
-        
-        
+            self.asm_code.append('    call CloseHandle')  # Close the thread handle        
     def visit_ReturnNode(self, node):
         self.visit(node.value_node)
         # RAX already contains the return value

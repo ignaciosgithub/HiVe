@@ -1,6 +1,8 @@
-import token_types
+from token_types import (
+    TT_PLUS, TT_MINUS, TT_MUL, TT_DIV,
+    TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE
+)
 import itertools
-import token_types
 from nodes import *
 import platform
 
@@ -44,43 +46,20 @@ class CodeGenerator:
         self.asm_code.append('    mov [heap_handle], rax') # Allocate shadow space (32 bytes) and align stack
 
     def generate(self, nodes):
+        """Generate assembly code for the AST."""
+        self.setup()
+
+        # Initialize variables dictionary
+        self.variables = [{}]
+
+        # Visit each node in the AST
         for node in nodes:
-            if isinstance(node, FunctionDefNode):
-                self.visit(node)
-    # Then, process the rest of the nodes
-        for node in nodes:
-            if not isinstance(node, FunctionDefNode):
-                self.visit(node)
-    # Proceed with the rest of your code generation
-    # Deallocate shadow space and restore stack
+            self.visit(node)
 
-        varlist = []
-        # Deallocate shadow space and restore stack
-        self.asm_code.append('    add rsp, 40')
+        # Add cleanup code
+        self.cleanup()
 
-        # Exit the program by calling ExitProcess
-        self.asm_code.append('    mov rcx, 0')      # Exit code 0, passed in rcx
-        self.asm_code.append('    call ExitProcess')
-
-        # Handle variable and array declarations in the .bss section
-        bss_section = ['section .bss']
-        bss_section.append('heap_handle: resq 1')
-        print(self.variable_scopes)
-        hj = self.variable_scopes[0]
-
-        for var_name,var_info in self.variables.items():
-            print(var_name)
-            if var_info['type'] == 'scalar':
-                bss_section.append(f'{var_name}: resq 1')  # Reserve 8 bytes
-            elif var_info['type'] == 'array':
-                total_size = var_info['size']
-                bss_section.append(f'{var_name}: resq {total_size}')  # Reserve space for the array
-            elif var_info['type'] == 'dynamic_array':
-                bss_section.append(f'{var_name}: resq 1')
-        # Insert the .bss section after the .data section
-        data_section_end = self.asm_code.index('section .text')
-        self.asm_code = self.asm_code[:data_section_end] + bss_section + self.asm_code[data_section_end:]
-
+        # Join all assembly code
         return '\n'.join(self.asm_code)
 
 
@@ -93,7 +72,9 @@ class CodeGenerator:
         raise Exception(f"No visit_{type(node).__name__} method defined")
 
     def visit_NumberNode(self, node):
-        self.asm_code.append(f'    mov rax, {node.token.value}')
+        """Generate ARM64 assembly for number literal."""
+        self.asm_code.append(f'    mov x0, #{node.token.value}')
+        return 'x0'
 
     def visit_VarAssignNode(self, node):
        if isinstance(node.left_node, VarAccessNode):
@@ -192,15 +173,13 @@ class CodeGenerator:
             raise Exception(f"Unknown binary operator {node.op_token.type}")
 
     def visit_PrintNode(self, node):
-        self.visit(node.value_node)
-        # Windows calling convention: first arg in rcx, second in rdx, third in r8, fourth in r9
-        # Since printf uses variable arguments, we need to ensure stack alignment
-        # Stack should be 16-byte aligned before a call
-
-        # We already subtracted 40 from rsp at the beginning (in setup), which aligns the stack
-        self.asm_code.append('    lea rcx, [rel format]')  # First argument: format string
-        self.asm_code.append('    mov rdx, rax')           # Second argument: value to print
-        self.asm_code.append('    call printf')
+        """Generate assembly code for print statement."""
+        value_reg = self.visit(node.value_node)
+        self.asm_code.append('    adrp x0, format_int')
+        self.asm_code.append('    add x0, x0, :lo12:format_int')
+        self.asm_code.append(f'    mov x1, {value_reg}')
+        self.asm_code.append('    bl printf')
+        return None
 
     def visit_IfNode(self, node):
         label_else = f"ELSE_{self.labels}"
@@ -731,4 +710,187 @@ class LinuxCodeGenerator(CodeGenerator):
     def thread_error(self):
         self.asm_code.append('thread_error:')
         self.asm_code.append('    mov rax, -1')
+
+class RISCCodeGenerator(CodeGenerator):
+    def __init__(self):
+        super().__init__()
+        # ARM64 register mapping
+        self.register_map = {
+            'x0': 'return value/first argument',
+            'x1': 'second argument',
+            'x2': 'third argument',
+            'x3': 'fourth argument',
+            'x4': 'fifth argument',
+            'x5': 'sixth argument',
+            'x6': 'seventh argument',
+            'x7': 'eighth argument',
+            'x8': 'indirect result location register',
+            'x9': 'temporary register',
+            'x10': 'temporary register',
+            'x11': 'temporary register',
+            'x12': 'temporary register',
+            'x13': 'temporary register',
+            'x14': 'temporary register',
+            'x15': 'temporary register',
+            'x16': 'intra-procedure-call temporary register',
+            'x17': 'intra-procedure-call temporary register',
+            'x18': 'platform register',
+            'x19': 'callee-saved register',
+            'x20': 'callee-saved register',
+            'x21': 'callee-saved register',
+            'x22': 'callee-saved register',
+            'x23': 'callee-saved register',
+            'x24': 'callee-saved register',
+            'x25': 'callee-saved register',
+            'x26': 'callee-saved register',
+            'x27': 'callee-saved register',
+            'x28': 'callee-saved register',
+            'x29': 'frame pointer',
+            'x30': 'link register',
+            'sp': 'stack pointer',
+        }
+        # Special registers for code generation
+        self.result_register = 'x0'
+        self.temp_registers = ['x9', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15']
+        self.argument_registers = ['x0', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7']
+        self.callee_saved = ['x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27', 'x28']
+
+    def setup(self):
+        """Initialize ARM64 assembly code with proper sections and external declarations."""
+        self.asm_code = []
+
+        # Data section for format strings and constants
+        self.asm_code.append('.data')
+        self.asm_code.append('format_int: .string "%ld\\n"')
+        self.asm_code.append('.align 3')  # 8-byte alignment
+
+        # BSS section for uninitialized data
+        self.asm_code.append('.bss')
+        self.asm_code.append('.align 3')
+
+        # Text section for code
+        self.asm_code.append('.text')
+        self.asm_code.append('.align 2')  # 4-byte alignment for instructions
+        self.asm_code.append('.global main')
+        self.asm_code.append('.type main, %function')
+
+        # External functions
+        self.asm_code.append('.extern printf')
+
+        # Program entry point
+        self.asm_code.append('main:')
+        self.asm_code.append('    stp x29, x30, [sp, #-16]!')  # Save frame pointer and link register
+        self.asm_code.append('    mov x29, sp')                 # Set up frame pointer
+
+    def cleanup(self):
+        """ARM64-specific cleanup"""
+        # Restore stack and frame pointer
+        self.asm_code.append('    mov sp, x29')                # Restore stack pointer
+        self.asm_code.append('    ldp x29, x30, [sp], #16')   # Restore FP and LR
+
+        # Exit program
+        self.asm_code.append('    mov x0, #0')                 # Return code 0
+        self.asm_code.append('    mov x8, #93')               # exit syscall number
+        self.asm_code.append('    svc #0')                    # Make syscall
+
+    def visit_BinOpNode(self, node):
+        """Generate ARM64 assembly for binary operations."""
+        # Visit left and right nodes to get their values in registers
+        left_reg = self.visit(node.left_node)
+        self.asm_code.append(f'    mov x2, {left_reg}')  # Save left value
+        right_reg = self.visit(node.right_node)
+        self.asm_code.append(f'    mov x3, {right_reg}')  # Save right value
+
+        result_reg = 'x0'
+        # Perform the operation based on the operator
+        if node.op_token.type == TT_PLUS:
+            self.asm_code.append(f'    add {result_reg}, x2, x3')
+        elif node.op_token.type == TT_MINUS:
+            self.asm_code.append(f'    sub {result_reg}, x2, x3')
+        elif node.op_token.type == TT_MUL:
+            self.asm_code.append(f'    mul {result_reg}, x2, x3')
+        elif node.op_token.type == TT_DIV:
+            # Check for division by zero
+            self.asm_code.append(f'    cmp x3, #0')
+            self.asm_code.append('    b.eq division_by_zero')
+            self.asm_code.append(f'    sdiv {result_reg}, x2, x3')
+
+        # Return the register containing the result
+        return result_reg
+
+    def visit_VarAssignNode(self, node):
+        """Generate ARM64 assembly for variable assignment."""
+        # Get the value into a register
+        value_reg = self.visit(node.value_node)
+
+        # Get the variable name from the left node
+        var_name = node.left_node.var_name_token.value
+
+        # If this is a new variable, declare it in BSS
+        if var_name not in self.variables[0]:
+            self.variables[0][var_name] = {'type': 'scalar'}
+            # Find BSS section and add variable declaration
+            bss_index = self.asm_code.index('.bss') + 2  # Skip .bss and .align
+            self.asm_code.insert(bss_index, f'{var_name}: .skip 8')
+
+        # Store the value in memory
+        self.asm_code.append(f'    adrp x1, {var_name}')
+        self.asm_code.append(f'    add x1, x1, :lo12:{var_name}')
+        self.asm_code.append(f'    str {value_reg}, [x1]')
+
+        return value_reg
+
+    def visit_VarAccessNode(self, node):
+        """Generate ARM64 assembly for variable access."""
+        if node.var_name_token.value not in self.variables[0]:
+            raise Exception(f"Variable '{node.var_name_token.value}' not defined")
+
+        # Load the value from memory into a register
+        result_reg = 'x0'
+        self.asm_code.append(f'    adrp x1, {node.var_name_token.value}')
+        self.asm_code.append(f'    add x1, x1, :lo12:{node.var_name_token.value}')
+        self.asm_code.append(f'    ldr {result_reg}, [x1]')
+
+        return result_reg
+
+    def visit_PrintNode(self, node):
+        """Generate ARM64 assembly for print statement."""
+        # Get the value to print in a register
+        value_reg = self.visit(node.value_node)
+        self.asm_code.append(f'    mov x1, {value_reg}')  # Value to print goes in x1
+        self.asm_code.append('    adrp x0, format_int')   # Format string address in x0
+        self.asm_code.append('    add x0, x0, :lo12:format_int')
+        self.asm_code.append('    bl printf')             # Call printf
+        return None
+    def visit_DynamicArrayAllocNode(self, node):
+        var_name = node.var_name_token.value
+
+        for scope in reversed(self.variable_scopes):
+            if var_name in scope:
+                scope[var_name]['type'] = 'dynamic_array'
+                break
+        else:
+            self.variable_scopes[-1][var_name] = {'type': 'dynamic_array'}
+            self.variables[var_name] = {'type': 'dynamic_array'}
+            self.asm_code.append(f'.lcomm {var_name}, 8')
+
+        self.visit(node.size_expr)
+        self.asm_code.append('    lsl x0, x0, #3')
+
+        self.asm_code.append('    bl malloc')
+        self.asm_code.append('    cbz x0, allocation_failed')
+
+        self.asm_code.append(f'    adrp x1, {var_name}@PAGE')
+        self.asm_code.append(f'    add x1, x1, {var_name}@PAGEOFF')
+        self.asm_code.append('    str x0, [x1]')
+
+    def visit_DeleteNode(self, node):
+        var_name = node.var_name_token.value
+        if var_name not in self.variables or self.variables[var_name]['type'] != 'dynamic_array':
+            raise Exception(f"Variable '{var_name}' is not a dynamic array")
+
+        self.asm_code.append(f'    adrp x1, {var_name}@PAGE')
+        self.asm_code.append(f'    add x1, x1, {var_name}@PAGEOFF')
+        self.asm_code.append('    ldr x0, [x1]')
+        self.asm_code.append('    bl free')
 

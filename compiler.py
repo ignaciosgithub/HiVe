@@ -1,17 +1,23 @@
 import token
 import platform
 from lexer import Lexer
-#from token_types import TT_PLUS, TT_MINUS, TT_MUL, TT_DIV, TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE
 import token_types
 from parser import Parser
-from code_generator import CodeGenerator, LinuxCodeGenerator
+from code_generator import CodeGenerator, LinuxCodeGenerator, RISCCodeGenerator
 import subprocess
 
 def get_code_generator():
-    if platform.system() == 'Windows':
-        return CodeGenerator()
-    else:
-        return LinuxCodeGenerator()
+    """Get the appropriate code generator based on platform."""
+    # Force RISC generation for testing
+    return RISCCodeGenerator()
+    # Original platform check code:
+    # system = platform.system()
+    # if system == 'Windows':
+    #     return CodeGenerator()
+    # elif system == 'Linux':
+    #     return LinuxCodeGenerator()
+    # else:
+    #     return RISCCodeGenerator()
 
 def compile_to_asm(source_code, output_filename='outputtest.asm'):
     lexer = Lexer(source_code)
@@ -26,36 +32,26 @@ def compile_to_asm(source_code, output_filename='outputtest.asm'):
         f.write(asm_code)
     print(asm_code)
 
-def assemble_and_link(asm_filename='outputtest.asm', obj_filename='outputtest.obj', exe_filename='outputtest.exe'):
-    system = platform.system()
-    if system == 'Windows':
-        subprocess.run(['nasm', '-f', 'win64', asm_filename, '-o', obj_filename], check=True)
-        subprocess.run(['gcc', '-o', exe_filename, obj_filename], check=True)
-    else:
-        subprocess.run(['nasm', '-f', 'elf64', asm_filename, '-o', obj_filename], check=True)
-        subprocess.run(['gcc', '-no-pie', '-o', exe_filename, obj_filename], check=True)
+def assemble_and_link(asm_filename='outputtest.asm', obj_filename='outputtest.o', exe_filename='outputtest'):
+    """Assemble and link the generated code using appropriate tools."""
+    try:
+        # Always use ARM64 toolchain since we're forcing RISC generation
+        subprocess.run(['aarch64-linux-gnu-as', '-o', obj_filename, asm_filename], check=True)
+        subprocess.run(['aarch64-linux-gnu-gcc', '-static', '-o', exe_filename, obj_filename], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error during assembly/linking: {e}")
+        raise
+    except FileNotFoundError as e:
+        print(f"Required tool not found: {e}")
+        print("Please ensure aarch64-linux-gnu-as and aarch64-linux-gnu-gcc are installed.")
+        raise
 
 def main():
     source_code = """
-i = 0
-j = 1
-threaded function reset_i()
-    # Wait for a moment to ensure the main thread has started incrementing
-   i = 9
-
-end
-
-# Start the threaded function
-reset_i()
-
-# Main thread increments i from 0 to 10,000
-while j < 1000
-    i = i + 1
-    j = j + 1
-    print i
-    reset_i()
-end
-
+a = 5
+b = 3
+c = a + b
+print c
     """
     compile_to_asm(source_code)
     assemble_and_link()

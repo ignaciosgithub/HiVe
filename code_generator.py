@@ -166,10 +166,10 @@ class CodeGenerator:
             elif node.op_token.type == token_types.TT_MUL:
                 self.asm_code.append('    imul rax, rbx')  # rax (left) = left * right
             elif node.op_token.type == token_types.TT_DIV:
-                self.asm_code.append('    xor rdx, rdx')   # Clear rdx before division
+                self.asm_code.append('    mov rdx, rax')   # Copy dividend to rdx
+                self.asm_code.append('    sar rdx, 63')    # Sign extend RAX into RDX
                 self.asm_code.append('    idiv rbx')       # rax = rax / rbx (left / right)
         elif node.op_token.type in (token_types.TT_EE, token_types.TT_NE, token_types.TT_LT, token_types.TT_GT, token_types.TT_LTE, token_types.TT_GTE):
-            # Comparison operation
             self.visit(node.left_node)
             self.asm_code.append('    push rax')
             self.visit(node.right_node)

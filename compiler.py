@@ -93,7 +93,7 @@ def assemble_and_link(asm_filename='outputtest.asm', obj_filename='outputtest.o'
             print(data.hex())
             gcc = shutil.which("gcc")
             if gcc:
-                subprocess.run([gcc, "-o", exe_filename, obj_filename], check=True)
+                subprocess.run([gcc, "-no-pie", "-o", exe_filename, obj_filename], check=True)
             else:
                 print("Skipping link: gcc not found.")
         else:

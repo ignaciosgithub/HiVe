@@ -11,9 +11,8 @@ class CodeGenerator:
         self.asm_code = []
         self.functions = {}
         self.labels = 0
-        self.variables = {}  # Keep track of variables
+        self.variables = {}
         self.string_constants = []
-        self.setup()
         self.current_function_end_label = None
         self.variable_scopes = [{}]
 
@@ -113,23 +112,19 @@ class CodeGenerator:
 
     def visit_VarAccessNode(self, node):
        var_name = node.var_name_token.value
-       # Look for variable in scopes starting from innermost
        for scope in reversed(self.variable_scopes):
-           print(self.variables)
            if var_name in scope:
-               var_info = scope[var_name]
                break
            elif var_name not in self.variables:
                self.variables[var_name] = {'type': 'scalar'}
-           else:
-               self.variables[var_name] = {'type': 'scalar'}# raise Exception(f"Undefined variable '{var_name}' accessed")
        var_info = self.variables[var_name]
        if var_info['type'] == 'scalar':
            self.asm_code.append(f'    mov rax, qword [{var_name}]')
        elif var_info['type'] == 'dynamic_array':
-           self.asm_code.append(f'    mov rax, [{var_name}]')  # Load the pointer
+           self.asm_code.append(f'    mov rax, [{var_name}]')
        else:
            raise Exception(f"Cannot access variable of type '{var_info['type']}'")
+       return 'rax'
     def visit_WhileNode(self, node):
         label_start = f'WHILE_START_{self.labels}'
         label_end = f'WHILE_END_{self.labels}'
@@ -551,6 +546,9 @@ class LinuxCodeGenerator(CodeGenerator):
 
     def generate(self, nodes):
         """Override generate to use Linux cleanup"""
+        self.asm_code = []
+        self.setup()
+
         for node in nodes:
             if isinstance(node, FunctionDefNode):
                 self.visit(node)
@@ -558,11 +556,9 @@ class LinuxCodeGenerator(CodeGenerator):
             if not isinstance(node, FunctionDefNode):
                 self.visit(node)
 
-        # Add cleanup code
         self.cleanup()
 
-        # Handle variable declarations in .bss section
-        bss_section = ['section .bss']
+        bss_section = []
         for var_name, var_info in self.variables.items():
             if var_info['type'] == 'scalar':
                 bss_section.append(f'{var_name}: resq 1')
@@ -572,7 +568,6 @@ class LinuxCodeGenerator(CodeGenerator):
             elif var_info['type'] == 'dynamic_array':
                 bss_section.append(f'{var_name}: resq 1')
 
-        # Insert .bss section after .data section
         data_section_end = self.asm_code.index('section .text')
         self.asm_code = self.asm_code[:data_section_end] + bss_section + self.asm_code[data_section_end:]
 

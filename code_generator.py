@@ -558,7 +558,7 @@ class LinuxCodeGenerator(CodeGenerator):
 
         self.cleanup()
 
-        bss_section = ['section .bss']
+        bss_section = []
         for var_name, var_info in self.variables.items():
             if var_info['type'] == 'scalar':
                 bss_section.append(f'{var_name}: resq 1')

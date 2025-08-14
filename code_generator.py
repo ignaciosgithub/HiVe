@@ -46,8 +46,9 @@ class CodeGenerator:
         """Generate assembly code for the AST."""
         self.setup()
 
-        # Initialize variables dictionary
-        self.variables = [{}]
+        # Initialize symbol tables
+        self.variables = {}
+        self.variable_scopes = [{}]
 
         # Visit each node in the AST
         for node in nodes:

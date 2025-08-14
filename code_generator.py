@@ -546,6 +546,9 @@ class LinuxCodeGenerator(CodeGenerator):
 
     def generate(self, nodes):
         """Override generate to use Linux cleanup"""
+        self.asm_code = []
+        self.setup()
+
         for node in nodes:
             if isinstance(node, FunctionDefNode):
                 self.visit(node)
@@ -553,10 +556,8 @@ class LinuxCodeGenerator(CodeGenerator):
             if not isinstance(node, FunctionDefNode):
                 self.visit(node)
 
-        # Add cleanup code
         self.cleanup()
 
-        # Handle variable declarations in .bss section
         bss_section = ['section .bss']
         for var_name, var_info in self.variables.items():
             if var_info['type'] == 'scalar':
@@ -567,7 +568,6 @@ class LinuxCodeGenerator(CodeGenerator):
             elif var_info['type'] == 'dynamic_array':
                 bss_section.append(f'{var_name}: resq 1')
 
-        # Insert .bss section after .data section
         data_section_end = self.asm_code.index('section .text')
         self.asm_code = self.asm_code[:data_section_end] + bss_section + self.asm_code[data_section_end:]
 

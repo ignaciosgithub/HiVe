@@ -29,28 +29,30 @@ class CodeGenerator:
         self.asm_code.append('extern CloseHandle')
 
         self.asm_code.append('section .data')
-        self.asm_code.append('format db "%lld", 10, 0')  # For printing integers
+        self.asm_code.append('format db "%lld", 10, 0')
 
-        # Windows heap flags
         self.asm_code.append('HEAP_ZERO_MEMORY equ 0x00000008')
-        # We will store the process heap handle
-        #self.asm_code.append('section .bss')
-        #self.asm_code.append('heap_handle: resq 1')
+        self.asm_code.append('section .bss')
+        self.asm_code.append('heap_handle: resq 1')
 
         self.asm_code.append('section .text')
         self.asm_code.append('main:')
-        self.asm_code.append('    sub rsp, 40')  # Allocate shadow space (32 bytes) and align stack
+        self.asm_code.append('    sub rsp, 40')
 
-        # Get the process heap
         self.asm_code.append('    call GetProcessHeap')
-        self.asm_code.append('    mov [heap_handle], rax') # Allocate shadow space (32 bytes) and align stack
+        self.asm_code.append('    mov [heap_handle], rax')
+
+    def cleanup(self):
+        self.asm_code.append('    mov ecx, 0')
+        self.asm_code.append('    call ExitProcess')
 
     def generate(self, nodes):
         """Generate assembly code for the AST."""
         self.setup()
 
-        # Initialize variables dictionary
-        self.variables = [{}]
+        # Initialize symbol tables
+        self.variables = {}
+        self.variable_scopes = [{}]
 
         # Visit each node in the AST
         for node in nodes:
@@ -58,6 +60,19 @@ class CodeGenerator:
 
         # Add cleanup code
         self.cleanup()
+
+        bss_vars = []
+        for var_name, var_info in self.variables.items():
+            if var_info['type'] == 'scalar':
+                bss_vars.append(f'{var_name}: resq 1')
+            elif var_info['type'] == 'array':
+                total_size = var_info.get('size', 1)
+                bss_vars.append(f'{var_name}: resq {total_size}')
+            elif var_info['type'] == 'dynamic_array':
+                bss_vars.append(f'{var_name}: resq 1')
+        if bss_vars:
+            text_idx = self.asm_code.index('section .text')
+            self.asm_code = self.asm_code[:text_idx] + bss_vars + self.asm_code[text_idx:]
 
         # Join all assembly code
         return '\n'.join(self.asm_code)
@@ -72,9 +87,8 @@ class CodeGenerator:
         raise Exception(f"No visit_{type(node).__name__} method defined")
 
     def visit_NumberNode(self, node):
-        """Generate ARM64 assembly for number literal."""
-        self.asm_code.append(f'    mov x0, #{node.token.value}')
-        return 'x0'
+        self.asm_code.append(f'    mov rax, {node.token.value}')
+        return 'rax'
 
     def visit_VarAssignNode(self, node):
        if isinstance(node.left_node, VarAccessNode):
@@ -133,52 +147,52 @@ class CodeGenerator:
 
 
     def visit_BinOpNode(self, node):
-        if node.op_token.type in (token_types.TT_PLUS, token_types.TT_MINUS, token_types.TT_MUL, token_types.TT_DIV):
+        if node.op_token.type in (TT_PLUS, TT_MINUS, TT_MUL, TT_DIV):
             self.visit(node.left_node)
             self.asm_code.append('    push rax')  # Save left operand
             self.visit(node.right_node)
             self.asm_code.append('    mov rbx, rax')  # Move right operand to rbx
             self.asm_code.append('    pop rax')   # Restore left operand to rax
 
-            if node.op_token.type == token_types.TT_PLUS:
+            if node.op_token.type == TT_PLUS:
                 self.asm_code.append('    add rax, rbx')  # rax (left) = left + right
-            elif node.op_token.type == token_types.TT_MINUS:
+            elif node.op_token.type == TT_MINUS:
                 self.asm_code.append('    sub rax, rbx')  # rax (left) = left - right
-            elif node.op_token.type == token_types.TT_MUL:
+            elif node.op_token.type == TT_MUL:
                 self.asm_code.append('    imul rax, rbx')  # rax (left) = left * right
-            elif node.op_token.type == token_types.TT_DIV:
+            elif node.op_token.type == TT_DIV:
                 self.asm_code.append('    mov rdx, rax')   # Copy dividend to rdx
                 self.asm_code.append('    sar rdx, 63')    # Sign extend RAX into RDX
                 self.asm_code.append('    idiv rbx')       # rax = rax / rbx (left / right)
-        elif node.op_token.type in (token_types.TT_EE, token_types.TT_NE, token_types.TT_LT, token_types.TT_GT, token_types.TT_LTE, token_types.TT_GTE):
+        elif node.op_token.type in (TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE):
             self.visit(node.left_node)
             self.asm_code.append('    push rax')
             self.visit(node.right_node)
             self.asm_code.append('    pop rbx')
             self.asm_code.append('    cmp rbx, rax')
-            if node.op_token.type == token_types.TT_EE:
+            if node.op_token.type == TT_EE:
                 self.asm_code.append('    sete al')
-            elif node.op_token.type == token_types.TT_NE:
+            elif node.op_token.type == TT_NE:
                 self.asm_code.append('    setne al')
-            elif node.op_token.type == token_types.TT_LT:
+            elif node.op_token.type == TT_LT:
                 self.asm_code.append('    setl al')
-            elif node.op_token.type == token_types.TT_GT:
+            elif node.op_token.type == TT_GT:
                 self.asm_code.append('    setg al')
-            elif node.op_token.type == token_types.TT_LTE:
+            elif node.op_token.type == TT_LTE:
                 self.asm_code.append('    setle al')
-            elif node.op_token.type == token_types.TT_GTE:
+            elif node.op_token.type == TT_GTE:
                 self.asm_code.append('    setge al')
             self.asm_code.append('    movzx rax, al')  # Zero-extend al to rax
         else:
             raise Exception(f"Unknown binary operator {node.op_token.type}")
 
     def visit_PrintNode(self, node):
-        """Generate assembly code for print statement."""
         value_reg = self.visit(node.value_node)
-        self.asm_code.append('    adrp x0, format_int')
-        self.asm_code.append('    add x0, x0, :lo12:format_int')
-        self.asm_code.append(f'    mov x1, {value_reg}')
-        self.asm_code.append('    bl printf')
+        self.asm_code.append('    sub rsp, 32')
+        self.asm_code.append('    lea rcx, [rel format]')
+        self.asm_code.append(f'    mov rdx, {value_reg}')
+        self.asm_code.append('    call printf')
+        self.asm_code.append('    add rsp, 32')
         return None
 
     def visit_IfNode(self, node):
@@ -210,9 +224,9 @@ class CodeGenerator:
         self.asm_code.append(f'{label_end}:')
     def visit_UnaryOpNode(self, node):
         self.visit(node.node)
-        if node.op_token.type == token_types.TT_MINUS:
+        if node.op_token.type == TT_MINUS:
             self.asm_code.append('    neg rax')
-        elif node.op_token.type == token_types.TT_PLUS:
+        elif node.op_token.type == TT_PLUS:
             pass  # Unary plus doesn't change the value
         else:
             raise Exception(f"Unknown unary operator {node.op_token.type}")

@@ -1,3 +1,46 @@
+Windows and Linux targets with default to Windows x86_64
+
+This repository now detects OS/architecture and selects a code generator automatically:
+- Windows -> Windows x86_64
+- Linux -> Linux x86_64
+- Unknown or detection failure -> defaults to Windows x86_64
+
+You can override the target explicitly:
+python3 compiler.py --target windows-x86_64
+python3 compiler.py --target linux-x86_64
+python3 compiler.py --target arm64
+
+The compiler prints:
+- Tokens
+- AST
+- Generated assembly
+- Machine code: after assembling, the object file bytes are printed in hex before linking.
+
+Windows build requirements:
+- NASM
+- MinGW (x86_64-w64-mingw32-gcc) or a GCC on Windows environment
+On Windows:
+python compiler.py --target windows-x86_64
+This will assemble to a .obj, print machine code, and attempt to link an .exe using MinGW or GCC if available.
+
+Linux build requirements:
+- NASM
+- GCC
+On Linux:
+python3 compiler.py --target linux-x86_64
+This will assemble to .o, print machine code, and link an executable if gcc is present.
+
+ARM64 (RISC) requirements:
+- aarch64-linux-gnu-as
+- aarch64-linux-gnu-gcc
+On Linux (with cross toolchain installed):
+python3 compiler.py --target arm64
+
+Notes:
+- If the toolchain for the selected target is not installed, assembly/linking will be skipped with a clear message after printing what was attempted.
+- Windows codegen stores the process heap handle in .bss (heap_handle) and uses Windows API calls for allocation and threading.
+
+
 update: heap arrays are now accessable
 
 Side project of creating a windows based assembly compiler for a new programming language that i invented.    

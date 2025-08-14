@@ -104,8 +104,36 @@ class Parser:
         self.advance()  # Skip 'threaded'
         if not self.current_token.matches(TT_KEYWORD, 'function'):
             raise Exception("Expected 'function' after 'threaded'")
+
         
+        
+        print(self.current_token)
+        self.advance()
+        func_name = self.current_token
+        print(func_name)
+        if func_name.type != TT_IDENTIFIER:
+            raise Exception("Expected function name")
+        self.advance()
+        if self.current_token.type != TT_LPAREN:
+            raise Exception("Expected '(' after function name")
+        self.advance()
+
+        param_tokens = self.parse_parameter_list()
+
+        if self.current_token.type != TT_RPAREN:
+            raise Exception("Expected ')' after parameters")
+        self.advance()
+        # Function body
+        statements = []
+        while not self.current_token.matches(TT_KEYWORD, 'end'):
+            stmt = self.statement()
+            if stmt:
+                statements.append(stmt)
+        self.advance()  # Skip 'end'
+
+        return FunctionDefNode(func_name, param_tokens, statements, True)        
         return self.function_definition(threaded=True)
+    
     def parse_parameter_list(self):
         params = []
         if self.current_token.type == TT_IDENTIFIER:
@@ -117,6 +145,12 @@ class Parser:
                     raise Exception("Expected parameter name")
                 params.append(self.current_token)
                 self.advance()
+        elif self.current_token.type == TT_RPAREN:
+            # Empty parameter list
+            pass
+        else:
+            # If the next token is not ')' or an identifier, raise an exception
+            raise Exception("Expected parameter or ')'")
         return params
     def print_statement(self):
         self.advance()
@@ -234,19 +268,33 @@ class Parser:
             self.advance()
             factor = self.factor()
             return UnaryOpNode(token, factor)
-        elif token.type == TT_INT:
+        if token.type == TT_INT:
             self.advance()
             return NumberNode(token)
-        elif self.current_token.type == TT_LBRACKET:
-            return self.array_access(token)
         elif token.type == TT_IDENTIFIER:
             self.advance()
-            if self.current_token.type == TT_LPAREN:
+            if self.current_token.type == TT_LBRACKET:
+                # Array access
+                self.advance()
+                index_expr = self.expression()
+                if self.current_token.type != TT_RBRACKET:
+                    raise Exception("Expected ']'")
+                self.advance()
+                return ArrayAccessNode(token, [index_expr])
+            elif self.current_token.type == TT_LPAREN:
                 # Function call
-                return self.function_call(token)
-
+                self.advance()  # Skip '('
+                arg_nodes = []
+                if self.current_token.type != TT_RPAREN:
+                    arg_nodes.append(self.expression())
+                    while self.current_token.type == TT_COMMA:
+                        self.advance()
+                        arg_nodes.append(self.expression())
+                if self.current_token.type != TT_RPAREN:
+                    raise Exception("Expected ')' after function arguments")
+                self.advance()  # Skip ')'
+                return FunctionCallNode(token, arg_nodes)
             else:
-                
                 return VarAccessNode(token)
         elif token.type == TT_LPAREN:
             self.advance()
@@ -257,7 +305,7 @@ class Parser:
             else:
                 raise Exception("Expected ')'")
         else:
-            pass#raise Exception(f"Unexpected token {token.type}")
+            raise Exception(f"Unexpected token {token.type}")
     def function_call(self, func_name_token):
         self.advance()  # Skip '('
         arg_nodes = []
@@ -296,4 +344,3 @@ class Parser:
             raise Exception("Expected identifier after 'delete'")
         self.advance()
         return DeleteNode(var_name_token)
-

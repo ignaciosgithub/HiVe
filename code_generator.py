@@ -29,21 +29,18 @@ class CodeGenerator:
         self.asm_code.append('extern CloseHandle')
 
         self.asm_code.append('section .data')
-        self.asm_code.append('format db "%lld", 10, 0')  # For printing integers
+        self.asm_code.append('format db "%lld", 10, 0')
 
-        # Windows heap flags
         self.asm_code.append('HEAP_ZERO_MEMORY equ 0x00000008')
-        # We will store the process heap handle
-        #self.asm_code.append('section .bss')
-        #self.asm_code.append('heap_handle: resq 1')
+        self.asm_code.append('section .bss')
+        self.asm_code.append('heap_handle: resq 1')
 
         self.asm_code.append('section .text')
         self.asm_code.append('main:')
-        self.asm_code.append('    sub rsp, 40')  # Allocate shadow space (32 bytes) and align stack
+        self.asm_code.append('    sub rsp, 40')
 
-        # Get the process heap
         self.asm_code.append('    call GetProcessHeap')
-        self.asm_code.append('    mov [heap_handle], rax') # Allocate shadow space (32 bytes) and align stack
+        self.asm_code.append('    mov [heap_handle], rax')
 
     def generate(self, nodes):
         """Generate assembly code for the AST."""
@@ -72,9 +69,8 @@ class CodeGenerator:
         raise Exception(f"No visit_{type(node).__name__} method defined")
 
     def visit_NumberNode(self, node):
-        """Generate ARM64 assembly for number literal."""
-        self.asm_code.append(f'    mov x0, #{node.token.value}')
-        return 'x0'
+        self.asm_code.append(f'    mov rax, {node.token.value}')
+        return 'rax'
 
     def visit_VarAssignNode(self, node):
        if isinstance(node.left_node, VarAccessNode):
@@ -173,12 +169,12 @@ class CodeGenerator:
             raise Exception(f"Unknown binary operator {node.op_token.type}")
 
     def visit_PrintNode(self, node):
-        """Generate assembly code for print statement."""
         value_reg = self.visit(node.value_node)
-        self.asm_code.append('    adrp x0, format_int')
-        self.asm_code.append('    add x0, x0, :lo12:format_int')
-        self.asm_code.append(f'    mov x1, {value_reg}')
-        self.asm_code.append('    bl printf')
+        self.asm_code.append('    sub rsp, 32')
+        self.asm_code.append('    lea rcx, [rel format]')
+        self.asm_code.append(f'    mov rdx, {value_reg}')
+        self.asm_code.append('    call printf')
+        self.asm_code.append('    add rsp, 32')
         return None
 
     def visit_IfNode(self, node):

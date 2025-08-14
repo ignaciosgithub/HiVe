@@ -541,7 +541,12 @@ class LinuxCodeGenerator(CodeGenerator):
         """Linux-specific cleanup"""
         self.asm_code.append('    mov rsp, rbp')
         self.asm_code.append('    pop rbp')
-        self.asm_code.append('    xor eax, eax')  # Return 0
+        self.asm_code.append('    xor eax, eax')
+        self.asm_code.append('    ret')
+        self.asm_code.append('allocation_failed:')
+        self.asm_code.append('    mov rsp, rbp')
+        self.asm_code.append('    pop rbp')
+        self.asm_code.append('    mov eax, 1')
         self.asm_code.append('    ret')
 
     def generate(self, nodes):

@@ -42,6 +42,10 @@ class CodeGenerator:
         self.asm_code.append('    call GetProcessHeap')
         self.asm_code.append('    mov [heap_handle], rax')
 
+    def cleanup(self):
+        self.asm_code.append('    mov ecx, 0')
+        self.asm_code.append('    call ExitProcess')
+
     def generate(self, nodes):
         """Generate assembly code for the AST."""
         self.setup()
@@ -56,6 +60,19 @@ class CodeGenerator:
 
         # Add cleanup code
         self.cleanup()
+
+        bss_vars = []
+        for var_name, var_info in self.variables.items():
+            if var_info['type'] == 'scalar':
+                bss_vars.append(f'{var_name}: resq 1')
+            elif var_info['type'] == 'array':
+                total_size = var_info.get('size', 1)
+                bss_vars.append(f'{var_name}: resq {total_size}')
+            elif var_info['type'] == 'dynamic_array':
+                bss_vars.append(f'{var_name}: resq 1')
+        if bss_vars:
+            text_idx = self.asm_code.index('section .text')
+            self.asm_code = self.asm_code[:text_idx] + bss_vars + self.asm_code[text_idx:]
 
         # Join all assembly code
         return '\n'.join(self.asm_code)

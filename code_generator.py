@@ -516,6 +516,8 @@ class CodeGenerator:
 class LinuxCodeGenerator(CodeGenerator):
     def __init__(self):
         super().__init__()
+        self.local_offsets = None
+        self.local_offsets = None
 
     def setup(self):
         """Linux-specific setup"""
@@ -645,13 +647,26 @@ class LinuxCodeGenerator(CodeGenerator):
             # Regular function prologue
             self.asm_code.append('    push rbp')
             self.asm_code.append('    mov rbp, rsp')
-            # Handle parameters using Linux calling convention
             param_registers = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+            num_params = len(node.param_tokens)
+            if num_params > 0:
+                slots = ((num_params + 1) // 2) * 2
+                self.asm_code.append(f'    sub rsp, {slots * 8}')
+
+                self.asm_code.append(f'    sub rsp, {slots * 8}')
+            self.local_offsets = {}
             for i, param_token in enumerate(node.param_tokens):
-                self.variables[param_token.value] = {'type': 'scalar'}
+                name = param_token.value
+                self.variables[name] = {'type': 'scalar'}
+                off = (i + 1) * 8
                 if i < 6:
                     reg = param_registers[i]
-                    self.asm_code.append(f'    mov qword [{param_token.value}], {reg}')
+                    self.asm_code.append(f'    mov qword [rbp - {off}], {reg}')
+                else:
+                    stack_off = (i - 6) * 8 + 16
+                    self.asm_code.append(f'    mov rax, qword [rbp + {stack_off}]')
+                    self.asm_code.append(f'    mov qword [rbp - {off}], rax')
+                self.local_offsets[name] = off
 
         # Function body
         for stmt in node.body_nodes:
@@ -665,6 +680,8 @@ class LinuxCodeGenerator(CodeGenerator):
             self.asm_code.append('    ret')  # Return to thread exit
         else:
             self.asm_code.append('    ret')
+        self.local_offsets = None
+
 
         # Save the function code
         func_code = self.asm_code
@@ -712,14 +729,30 @@ class LinuxCodeGenerator(CodeGenerator):
 
             if len(stack_args) % 2 != 0:
                 self.asm_code.append('    sub rsp, 8')
-
             self.asm_code.append(f'    call FUNC_{func_name}')
-
             if stack_args:
                 cleanup_size = len(stack_args) * 8
                 if len(stack_args) % 2 != 0:
                     cleanup_size += 8
                 self.asm_code.append(f'    add rsp, {cleanup_size}')
+
+    def visit_VarAccessNode(self, node):
+        var_name = node.var_name_token.value
+        if self.local_offsets is not None and var_name in self.local_offsets:
+            off = self.local_offsets[var_name]
+            self.asm_code.append(f'    mov rax, qword [rbp - {off}]')
+            return
+        super().visit_VarAccessNode(node)
+
+    def visit_VarAssignNode(self, node):
+        var_name = node.left_node.var_name_token.value
+        self.visit(node.value_node)
+        if self.local_offsets is not None and var_name in self.local_offsets:
+            off = self.local_offsets[var_name]
+            self.asm_code.append(f'    mov qword [rbp - {off}], rax')
+            return
+        super().visit_VarAssignNode(node)
+
 
     def thread_error(self):
         self.asm_code.append('thread_error:')
@@ -740,6 +773,7 @@ class RISCCodeGenerator(CodeGenerator):
             'x7': 'eighth argument',
             'x8': 'indirect result location register',
             'x9': 'temporary register',
+
             'x10': 'temporary register',
             'x11': 'temporary register',
             'x12': 'temporary register',
